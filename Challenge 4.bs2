@@ -1,0 +1,54 @@
+' {$STAMP BS2}
+' {$PBASIC 2.5}
+
+
+'GROUP MEMBER:
+'Moataz
+'Alfonso
+'Kevin
+
+
+' Variables
+irDetectLeft  VAR  Bit
+irDetectRight  VAR  Bit
+pulseLeft  VAR  Word
+pulseRight  VAR  Word
+
+' Signal program start/reset
+FREQOUT 4, 1000, 3000
+
+' Main routine
+DO
+FREQOUT 8, 1, 8500
+irDetectLeft = IN9
+FREQOUT 2, 1, 8500
+irDetectRight = IN0
+
+IF (irDetectLeft = 0) AND (irDetectRight = 0) THEN
+pulseLeft = 650
+pulseRight = 650
+HIGH 1
+HIGH 10
+ELSEIF (irDetectLeft = 0) THEN
+pulseLeft = 850
+pulseRight = 850
+HIGH 10
+LOW 1
+ELSEIF (irDetectRight = 0) THEN
+pulseLeft = 650
+pulseRight = 650
+HIGH 1
+LOW 10
+ELSE
+pulseLeft = 823
+pulseRight = 650
+LOW 1
+LOW 10
+ENDIF
+
+PULSOUT 13,pulseLeft
+PULSOUT 12,pulseRight
+
+PAUSE 15
+
+LOOP

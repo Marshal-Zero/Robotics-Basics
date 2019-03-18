@@ -1,0 +1,126 @@
+'-----[ Title ]---------------------------------------------------------------
+
+
+'GROUP MEMBERS FOR THIS CHALLENGE
+'1- MOATAZ
+'2- ALFONSO
+'3- KEVIN
+
+
+' {$STAMP BS2}                               ' Stamp directive.
+' {$PBASIC 2.5}                              ' PBASIC directive.
+
+NEGATIVE       CON     1                     ' For negative numbers
+
+' Application Variables
+pulseLeft      VAR     Word                  ' Left servo pulse duration
+pulseRight     VAR     Word                  ' Right servo pulse duration
+light          VAR     Word                  ' Brightness/darkness indicator
+ndShade        VAR     Word                  ' Normalized differential shade
+
+' Subroutine Variables
+tLeft          VAR     pulseLeft             ' Stores left RCTIME measurement
+tRight         VAR     pulseRight            ' Stores right RCTIME measurement
+n              VAR     tLeft                 ' Numerator
+d              VAR     Word                  ' Denominator
+q              VAR     ndShade               ' Quotient
+sumDiff        VAR     d                     ' For sum and difference calcs
+duty           VAR     Byte                  ' PWM duty argument variable
+i              VAR     Nib                   ' Index counting variable
+temp           VAR     i                     ' Temp storage for calcs
+sign           VAR     Bit                   ' Var.BIT15 = 1 if neg, 0 if pos
+
+
+FREQOUT 4, 2000, 3000
+DEBUG "Program running..."
+
+
+DO                                           ' Main Loop.
+
+  GOSUB Light_Shade_Info
+       IF light < 300 THEN
+ PULSOUT 13, 750
+  PULSOUT 12, 750
+  ELSE
+
+  ' Navigation Routine
+  IF (ndShade + 500) > 500 THEN
+    pulseLeft = 900 - ndShade MIN 650 MAX 850
+    pulseRight = 650
+  ELSE
+    pulseLeft = 850
+    pulseRight= 600 - ndShade MIN 650 MAX 850
+  ENDIF
+
+  PULSOUT 13, pulseLeft
+  PULSOUT 12, pulseRight
+              ENDIF
+LOOP
+
+'-----[ Subroutine - Light_Shade_Info ]---------------------------------------
+' Uses tLeft and tRight (RCTIME measurements) and pwm var to calculate:
+'   o light   - Ambient light level on a scale of 0 to 324
+'   o ndShade - Normalized differential shade on a scale of -500 to + 500
+'               (-500 -> dark shade over left, 0 -> equal shade,
+'                +500 -> dark shade over right)
+Light_Shade_Info:                            ' Subroutine label
+  GOSUB Light_Sensors                        ' Get raw RC light measurements
+  sumdiff = (tLeft + tRight) MAX 65535       ' Start light level with sum
+  IF duty <= 70 THEN                         ' If duty at min
+    light=duty-(sumdiff/905) MIN 1           ' Find how much darker
+    IF sumdiff = 0 THEN light = 0            ' If timeout, max darkness
+  ELSEIF duty = 255 THEN                     ' If duty at max
+    light=duty+((1800-(sumdiff))/26)         ' Find how much brighter
+  ELSE                                       ' If duty in range
+    light = duty                             ' light = duty
+  ENDIF                                      ' Done with light level
+  GOSUB Duty_Auto_Adjust                     ' Adjust PWM duty for next loop
+  n = tLeft                                  ' Set up tLeft/(tLeft+tRight)
+  d = tLeft + tRight
+  GOSUB Fraction_Thousandths                 ' Divide (returns thousandths)
+  ndShade = 500-q                            ' Normalized differential shade
+  RETURN                                     ' Return from subroutine
+
+'-----[ Subroutine - Light_Sensors ]------------------------------------------
+' Measure P6 and P3 light sensor circuits.  Duty variable must be in 70...255.
+' Stores results in tLeft and tRight.
+Light_Sensors:                               ' Subroutine label
+  PWM 6, duty, 1                             ' Charge cap in P6 circuit
+  RCTIME 6, 1, tLeft                         ' Measure P6 decay
+  PWM 3, duty, 1                             ' Charge cap in P3 circuit
+  RCTIME 3, 1, tRight                        ' Measure decay
+  RETURN                                     ' Return from subroutine
+
+'-----[ Subroutine - Duty_Auto_Adjust ]---------------------------------------
+' Adjust duty variable to keep tLeft + tRight in the 1800 to 2200 range.
+' Requires sumdiff word variable for calculations.
+Duty_Auto_Adjust:                            ' Subroutine label
+  sumDiff = (tLeft + tRight) MAX 4000        ' Limit max ambient value
+  IF sumDiff = 0 THEN sumDiff = 4000         ' If 0 (timeout) then 4000
+  IF (sumDiff<=1800) OR (sumDiff>=2200) THEN ' If outside 1800 to 2200
+    sumDiff = 2000 - sumDiff                 ' Find excursion from target val
+    sign = sumDiff.BIT15                     ' Pos/neg if .BIT15 = 0/1
+    sumDiff = ABS(sumDiff) / 200             ' Max sumDiff will be +/- 10
+    sumDiff = sumDiff MAX ((duty-68)/2)      ' Reduce adjustment increments
+    sumDiff = sumDiff MAX ((257-duty)/2)     '  near ends of the range
+    IF sign=NEGATIVE THEN sumDiff=-sumDiff   ' Restore sign
+    duty = duty + sumDiff MIN 70 MAX 255     ' Limit duty to 70 to 255
+  ENDIF                                      ' End of if outside 1800 to 2200
+  RETURN                                     ' Return from subroutine
+
+'-----[ Subroutine - Fraction_Thousandths ]-----------------------------------
+' Calculate q = n/d as a number of thousandths.
+' n and d should be unsigned and n < d.  Requires Nib size temp & i variables.
+Fraction_Thousandths:                        ' Subroutine label
+  q = 0                                      ' Clear quotient
+  IF n > 6500 THEN                           ' If n > 6500
+    temp = n / 6500                          '   scale n into 0..6500
+    n = n / temp
+    d = d / temp                             '   scale d with n
+  ENDIF
+  FOR i = 0 TO 3                             ' Long division ten thousandths
+    n = n // d * 10                          ' Multiply remainder by 10
+    q = q * 10 + (n/d)                       ' Add next digit to quotient
+  NEXT
+  IF q//10>=5 THEN q=q/10+1 ELSE q=q/10      ' Round q to nearest thousandth
+  RETURN                                     ' Return from subroutine
